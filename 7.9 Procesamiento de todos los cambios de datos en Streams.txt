@@ -1,0 +1,76 @@
+merge into SALES_FINAL_TABLE F      -- Tabla objetivo donde consolidar los cambios de la tabla bruta
+USING ( SELECT STRE.*,ST.location,ST.employees
+        FROM SALES_STREAM STRE
+        JOIN STORE_TABLE ST
+        ON STRE.store_id = ST.store_id
+       ) S
+ON F.id=S.id
+when matched                        -- Condición DELETE 
+    and S.METADATA$ACTION ='DELETE' 
+    and S.METADATA$ISUPDATE = 'FALSE'
+    then delete                   
+when matched                        -- Condición UPDATE 
+    and S.METADATA$ACTION ='INSERT' 
+    and S.METADATA$ISUPDATE  = 'TRUE'       
+    then update 
+    set f.product = s.product,
+        f.price = s.price,
+        f.amount= s.amount,
+        f.store_id=s.store_id
+when not matched 
+    and S.METADATA$ACTION ='INSERT'
+    then insert 
+    (id,product,price,store_id,amount,employees,location)
+    values
+    (s.id, s.product,s.price,s.store_id,s.amount,s.employees,s.location)
+        
+
+
+-- Verificar estado tablas y stream (tras ser consumido)
+
+SELECT * FROM SALES_RAW_STAGING;     
+        
+SELECT * FROM SALES_STREAM;
+
+SELECT * FROM SALES_FINAL_TABLE;
+       
+
+
+// Aplicar cambios INSERT
+
+INSERT INTO SALES_RAW_STAGING VALUES (2,'Lemon',0.99,1,1);
+
+-- Verificar estado tablas y stream (tras ser consumido)
+
+SELECT * FROM SALES_RAW_STAGING;     
+        
+SELECT * FROM SALES_STREAM;
+
+SELECT * FROM SALES_FINAL_TABLE;
+
+// Aplicar cambios UPDATE
+
+UPDATE SALES_RAW_STAGING
+SET PRODUCT = 'Lemonade'
+WHERE PRODUCT ='Lemon'
+
+-- Verificar estado tablas y stream (tras ser consumido)
+
+SELECT * FROM SALES_RAW_STAGING;     
+        
+SELECT * FROM SALES_STREAM;
+
+SELECT * FROM SALES_FINAL_TABLE;
+
+// Aplicar cambios DELETE
+       
+DELETE FROM SALES_RAW_STAGING
+WHERE PRODUCT = 'Lemonade';       
+
+-- Verificar estado tablas y stream (tras ser consumido)
+
+SELECT * FROM SALES_RAW_STAGING;     
+        
+SELECT * FROM SALES_STREAM;
+
+SELECT * FROM SALES_FINAL_TABLE;

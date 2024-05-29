@@ -1,0 +1,30 @@
+SELECT * FROM SALES_RAW_STAGING;     
+        
+SELECT * FROM SALES_STREAM;
+
+UPDATE SALES_RAW_STAGING
+SET PRODUCT ='Potato' WHERE PRODUCT = 'Banana'
+
+
+// Combinar los resultados para actualizar en la tabla final
+merge into SALES_FINAL_TABLE F      -- Tabla objetivo donde consolidar los cambios de la tabla bruta
+using SALES_STREAM S                -- Stream que ha capturado los cambios
+   on  f.id = s.id                 
+when matched 
+    and S.METADATA$ACTION ='INSERT'
+    and S.METADATA$ISUPDATE ='TRUE'        -- Indica que el registro ha sido actualizado 
+    then update 
+    set f.product = s.product,
+        f.price = s.price,
+        f.amount= s.amount,
+        f.store_id=s.store_id;
+        
+
+SELECT * FROM SALES_FINAL_TABLE
+
+SELECT * FROM SALES_RAW_STAGING;     
+        
+SELECT * FROM SALES_STREAM;
+
+
+

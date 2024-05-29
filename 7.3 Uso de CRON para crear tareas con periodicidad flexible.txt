@@ -1,0 +1,35 @@
+CREATE OR REPLACE TASK CUSTOMER_INSERT
+    WAREHOUSE = COMPUTE_WH
+    SCHEDULE = 'USING CRON * * * * * * UTC'
+    AS 
+    INSERT INTO CUSTOMERS(CREATE_DATE) VALUES(CURRENT_TIMESTAMP);
+    
+
+# __________ minute (0-59)
+# | ________ hour (0-23)
+# | | ______ day of month (1-31, or L)
+# | | | ____ month (1-12, JAN-DEC)
+# | | | | __ day of week (0-6, SUN-SAT, or L)
+# | | | | |
+# | | | | |
+# * * * * *
+
+
+// Ejemplo Cada minuto
+SCHEDULE = 'USING CRON * * * * * UTC'
+
+// Ejemplo cada día a las 6:00 UTC
+SCHEDULE = 'USING CRON 0 6 * * * UTC'
+
+// Ejemplo cada día a las 9:00 y a las 17:00 UTC
+SCHEDULE = 'USING CRON 0 9,17 * * * UTC'
+
+// Ejemplo cada hora desde las 9:00 hasta las 17:00 los domingos utilizando la zona horaria América/Los Ángeles 
+SCHEDULE = 'USING CRON 0 9-17 * * SUN America/Los_Angeles'
+
+
+CREATE OR REPLACE TASK CUSTOMER_INSERT
+    WAREHOUSE = COMPUTE_WH
+    SCHEDULE = 'USING CRON 0 9,17 * * * UTC'
+    AS 
+    INSERT INTO CUSTOMERS(CREATE_DATE) VALUES(CURRENT_TIMESTAMP);

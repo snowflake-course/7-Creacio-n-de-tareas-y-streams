@@ -1,0 +1,19 @@
+SELECT * FROM SALES_FINAL_TABLE
+
+SELECT * FROM SALES_RAW_STAGING;     
+        
+SELECT * FROM SALES_STREAM;    
+
+DELETE FROM SALES_RAW_STAGING
+WHERE PRODUCT = 'Lemon';
+         
+        
+-- ******* Procesar stream y consolidar resultados tras eliminar  ********            
+   
+merge into SALES_FINAL_TABLE F      -- Tabla objetivo donde consolidar los cambios de la tabla bruta
+using SALES_STREAM S                -- Stream que ha capturado los cambios
+   on  f.id = s.id          
+when matched 
+    and S.METADATA$ACTION ='DELETE' 
+    and S.METADATA$ISUPDATE = 'FALSE'
+    then delete    
