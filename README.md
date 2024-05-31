@@ -5,6 +5,9 @@
 4. [¿Qué son los Streams en Snowflake?](#schema4)
 5. [Uso de Stream para operación UPDATE](#schema5)
 6. [Uso de Stream para operación DELETE](#schema6)
+7. [Procesamiento de todos los cambios de datos en Streams](#schema7)
+8. [Combinar Tareas y Streams en Snowflake](#schema8)
+
 
 <hr>
 
@@ -409,3 +412,215 @@ Vacío porque ya lo hemos consumido
 <a name="schema6"></a>
 
 ## 6. Uso de Stream para operación DELETE
+
+1. Sentenciaa para borrar todos los productos que sean igual a `Lemon`
+```sql
+DELETE FROM SALES_RAW_STAGING
+WHERE PRODUCT = 'Lemon';
+```   
+```sql
+SELECT * FROM SALES_RAW_STAGING
+```  
+![](./img/tabla_delete.png)
+
+
+2. Procesar stream y consolidar resultados tras eliminar
+
+```sql
+   
+merge into SALES_FINAL_TABLE F      -- Tabla objetivo donde consolidar los cambios de la tabla bruta
+using SALES_STREAM S                -- Stream que ha capturado los cambios
+   on  f.id = s.id          
+when matched 
+    and S.METADATA$ACTION ='DELETE' 
+    and S.METADATA$ISUPDATE = 'FALSE'
+    then delete    
+```
+
+3. Verificar las tablas
+```sql
+SELECT * FROM SALES_FINAL_TABLE 
+```
+![](./img/tabla_delete_final.png)
+
+
+
+<hr>
+
+<a name="schema7"></a>
+
+## 7. Procesamiento de todos los cambios de datos en Streams
+1. Sentencia
+```sql
+merge into SALES_FINAL_TABLE F      -- Tabla objetivo donde consolidar los cambios de la tabla bruta
+USING ( SELECT STRE.*,ST.location,ST.employees
+        FROM SALES_STREAM STRE
+        JOIN STORE_TABLE ST
+        ON STRE.store_id = ST.store_id
+       ) S
+ON F.id=S.id
+when matched                        -- Condición DELETE 
+    and S.METADATA$ACTION ='DELETE' 
+    and S.METADATA$ISUPDATE = 'FALSE'
+    then delete                   
+when matched                        -- Condición UPDATE 
+    and S.METADATA$ACTION ='INSERT' 
+    and S.METADATA$ISUPDATE  = 'TRUE'       
+    then update 
+    set f.product = s.product,
+        f.price = s.price,
+        f.amount= s.amount,
+        f.store_id=s.store_id
+when not matched 
+    and S.METADATA$ACTION ='INSERT'
+    then insert 
+    (id,product,price,store_id,amount,employees,location)
+    values
+    (s.id, s.product,s.price,s.store_id,s.amount,s.employees,s.location)
+```
+
+
+2. Aplicar cambios **INSERT**
+```sql
+INSERT INTO SALES_RAW_STAGING VALUES (2,'Lemon',0.99,1,1);
+```
+```sql
+SELECT * FROM SALES_STREAM;
+```
+![](./img/stream_insert.png)
+
+3. Ejecutamos la sentencia anterior, punto 1.
+```sql
+SELECT * FROM SALES_FINAL_TABLE;
+```
+![](./img/final_insert.png)
+
+
+4. Aplicar cambios **UPDATE**
+```sql
+UPDATE SALES_RAW_STAGING
+SET PRODUCT = 'Lemonade'
+WHERE PRODUCT ='Lemon'
+```
+5. Ejecutamos la sentencia anterior, punto 1.
+
+Verificar estado tablas y stream (tras ser consumido)
+
+```sql
+SELECT * FROM SALES_FINAL_TABLE;
+```
+![](./img/final_update.png)
+
+6. Aplicar cambios **DELETE**
+
+```sql       
+DELETE FROM SALES_RAW_STAGING
+WHERE PRODUCT = 'Lemonade';       
+```
+7. Ejecutamos la sentencia anterior, punto 1.
+
+Verificar estado tablas y stream (tras ser consumido)
+
+```sql
+SELECT * FROM SALES_FINAL_TABLE;
+```
+![](./img/final_delete.png)
+
+
+<hr>
+
+<a name="schema8"></a>
+
+
+## 8. Combinar Tareas y Streams en Snowflake
+
+1. Crear la tarea de verificación de cambios cada minuto
+```sql
+CREATE OR REPLACE TASK all_data_changes
+    WAREHOUSE = COMPUTE_WH
+    SCHEDULE = '1 MINUTE'
+    WHEN SYSTEM$STREAM_HAS_DATA('SALES_STREAM')
+    AS -- Aplicar la lógica que procesa todos los cambios
+merge into SALES_FINAL_TABLE F     
+USING ( SELECT STRE.*,ST.location,ST.employees
+        FROM SALES_STREAM STRE
+        JOIN STORE_TABLE ST
+        ON STRE.store_id = ST.store_id
+       ) S
+ON F.id=S.id
+when matched                       
+    and S.METADATA$ACTION ='DELETE' 
+    and S.METADATA$ISUPDATE = 'FALSE'
+    then delete                   
+when matched                      
+    and S.METADATA$ACTION ='INSERT' 
+    and S.METADATA$ISUPDATE  = 'TRUE'       
+    then update 
+    set f.product = s.product,
+        f.price = s.price,
+        f.amount= s.amount,
+        f.store_id=s.store_id
+when not matched 
+    and S.METADATA$ACTION ='INSERT'
+    then insert 
+    (id,product,price,store_id,amount,employees,location)
+    values
+    (s.id, s.product,s.price,s.store_id,s.amount,s.employees,s.location)
+```
+
+2. Activar la tarea
+```sql
+ALTER TASK all_data_changes RESUME;
+SHOW TASKS;
+```
+
+3. Aplicar **INSERT**
+```sql
+INSERT INTO SALES_RAW_STAGING VALUES (11,'Milk',1.99,1,2);
+INSERT INTO SALES_RAW_STAGING VALUES (12,'Chocolate',4.49,1,2);
+INSERT INTO SALES_RAW_STAGING VALUES (13,'Cheese',3.89,1,1);
+```
+```sql
+SELECT * FROM SALES_STREAM;
+```
+![](./img/task_stream_insert.png)
+
+```sql
+SELECT * FROM SALES_FINAL_TABLE;
+```
+![](./img/task_stream_insert_final.png)
+
+
+5. Aplicar UPDATE
+```sql
+UPDATE SALES_RAW_STAGING
+SET PRODUCT = 'Chocolate bar'
+WHERE PRODUCT ='Chocolate';
+```
+```sql
+SELECT * FROM SALES_STREAM;
+```
+![](./img/task_stream_update.png)
+
+```sql
+SELECT * FROM SALES_FINAL_TABLE;
+```
+![](./img/task_stream_update_final.png)
+
+
+
+7. Aplicar DELETE
+```sql
+DELETE FROM SALES_RAW_STAGING
+WHERE PRODUCT = 'Mango';    
+```
+
+```sql
+SELECT * FROM SALES_STREAM;
+```
+![](./img/task_stream_delete.png)
+
+```sql
+SELECT * FROM SALES_FINAL_TABLE;
+```
+![](./img/task_stream_delete_final.png)
